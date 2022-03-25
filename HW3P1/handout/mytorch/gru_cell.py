@@ -107,6 +107,12 @@ class GRUCell(object):
         # Add your code here.
         # Define your variables based on the writeup using the corresponding
         # names below.
+        #print(self.Wzx.shape, self.x.shape, self.bzx.shape, self.Wzh.shape, self.hidden.shape, self.bzh.shape) # (20, 10) (10,), (20,) (20, 20) (20,) (20,)
+        self.z = self.z_act(self.Wzx@self.x + self.bzx + self.Wzh@self.hidden + self.bzh) # (20,)
+        self.r = self.r_act(self.Wrx@self.x + self.brx + self.Wrh@ self.hidden + self.brh) # (150,)
+        self.n = self.h_act(self.Wnx@self.x + self.bnx + self.r*(self.Wnh@self.hidden + self.bnh)) # (140,)
+        h_t = (1-self.z)*self.n + self.z*self.hidden
+
         
         # This code should not take more than 10 lines. 
         assert self.x.shape == (self.d,)
@@ -118,7 +124,7 @@ class GRUCell(object):
         assert h_t.shape == (self.h,) # h_t is the final output of you GRU cell.
 
         # return h_t
-        raise NotImplementedError
+        return h_t
 
     def backward(self, delta):
         """GRU cell backward.
@@ -154,9 +160,43 @@ class GRUCell(object):
         # initalized shapes accordingly
         
         # This code should not take more than 25 lines.
+        da_r = self.r_act.derivative() # shape: (2, ) [hidden,]
+        da_z = self.z_act.derivative() # shape: (2, ) [hidden,]
+        da_n = self.h_act.derivative(state = self.n) # shape: (2, ) [hidden,]
+
+        # Compute all derivatives
+        # STEP 1: using dLdh, compute dz dn dhid(little)
+        dz = delta * (-self.n + self.hidden) # shape: (1, 2) [batch, hidden]
+        dn = delta * (1 - self.z) # shape: (1, 2) [batch, hidden]
+        dh = delta * self.z # shape: (1, 2) [batch, hidden]
+
+        # STEP 2: using dn, compute dr dWnx dx dbnx dWnh dbnh dhid(little) 
+        dr = (da_n*dn) * (self.Wnh@self.hidden + self.bnh) # shape: (1, 2) [batch, hidden]
+        dx = (da_n*dn) @ self.Wnx  # shape: (1, 5) [batch, input]
+        self.dWnx += (da_n*dn).T @ self.x.reshape(1, -1) # shape: (2, 5) [hidden, input]
+        self.dbnx += (da_n*dn).reshape(-1) # (2, ) [hidden,]
+        self.dWnh += ((da_n*dn) * self.r).T * self.hidden.reshape(1, -1) # (2, 2) [hidden, hidden]
+        self.dbnh += ((da_n*dn) * self.r).reshape(-1) # (2,) [hidden,]
+        dh += ((da_n*dn) * self.r) @ self.Wnh # [batch, hidden]
+
+        # STEP 3: using dz, compute dx dWzx dbzx dWzh dbzh dhid(little)
+        dx += (da_z*dz) @ self.Wzx # [batch, input]
+        self.dWzx += (da_z*dz).T @ self.x.reshape(1, -1) # [hidden, input]
+        self.dbzx += (da_z*dz).reshape(-1) # [hidden,]
+        self.dWzh += (da_z*dz).T @ self.hidden.reshape(1, -1) # [hidden, hidden]
+        self.dbzh += (da_z*dz).reshape(-1) # [hidden,]
+        dh += (da_z*dz) @ self.Wzh # [batch, hidden]
+        
+        # STEP 4: using dr, compute dx dWrx dbrx dWrh dbrh dhid(final)
+        dx += (da_r*dr) @ self.Wrx # [batch, input]
+        self.dWrx += (da_r*dr).T @ self.x.reshape(1, -1) # [hidden, input]
+        self.dbrx += (da_r*dr).reshape(-1) # [hidden,]
+        self.dWrh += (da_r*dr).T @ self.hidden.reshape(1, -1) # [hidden, hidden]
+        self.dbrh += (da_r*dr).reshape(-1) # [hidden,]
+        dh += (da_r*dr) @ self.Wrh # [batch, hidden]
 
         assert dx.shape == (1, self.d)
         assert dh.shape == (1, self.h)
 
         # return dx, dh
-        raise NotImplementedError
+        return dx, dh

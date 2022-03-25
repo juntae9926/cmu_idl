@@ -18,8 +18,8 @@ class CharacterPredictor(object):
     def __init__(self, input_dim, hidden_dim, num_classes):
         super(CharacterPredictor, self).__init__()
         """The network consists of a GRU Cell and a linear layer."""
-        self.rnn = None # TODO
-        self.projection = None # TODO
+        self.rnn = GRUCell(input_dim, hidden_dim) # TODO
+        self.projection = Linear(hidden_dim, num_classes) # TODO
         self.projection.W = np.random.rand(num_classes, hidden_dim)
 
     def init_rnn_weights(
@@ -40,10 +40,10 @@ class CharacterPredictor(object):
 
         Input
         -----
-        x: (feature_dim)
+        x: (feature_dim) 7
             observation at current time-step.
 
-        h: (hidden_dim)
+        h: (hidden_dim) 4
             hidden-state at previous time-step.
         
         Returns
@@ -55,13 +55,13 @@ class CharacterPredictor(object):
             hidden state at current time-step.
 
         """
-        hnext = None # TODO
+        hnext = self.rnn(x, h) # TODO
         # self.projection expects input in the form of batch_size * input_dimension
         # Therefore, reshape the input of self.projection as (1,-1)
-        logits = None # TODO
-        # logits = logits.reshape(-1,) # uncomment once code implemented
+        logits = self.projection(hnext.reshape(1, -1)) # TODO
+        logits = logits.reshape(-1) # uncomment once code implemented
         # return logits, hnext
-        raise NotImplementedError
+        return logits, hnext
 
 
 def inference(net, inputs):
@@ -84,6 +84,14 @@ def inference(net, inputs):
             one per time step of input..
 
     """
-    
     # This code should not take more than 10 lines. 
-    raise NotImplementedError
+    seq_len, feature_dim = inputs.shape[0], inputs.shape[1]
+    num_classes, hidden_dim = net.projection.W.shape[0], net.projection.W.shape[1]
+    print(seq_len, feature_dim, num_classes, hidden_dim) # 10, 7, 3, 4
+    
+    hnext = np.zeros((hidden_dim))
+    logits = np.zeros((seq_len, num_classes)) # (10, 3)
+    for t in range(seq_len):
+        logit, hnext = net.forward(inputs[t], hnext)
+        logits[t] = logit
+    return logits
