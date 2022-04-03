@@ -34,7 +34,7 @@ class ClassificationTestSet(Dataset):
 
 
 
-model_name = 'val_74.011.pth'
+model_name = 'val_82.529.pth'
 model = MobileNetV2()
 state_dict = torch.load("/home/mmlab/idl/HW2P2/result/model/{}".format(model_name))
 
@@ -51,7 +51,7 @@ model.cuda()
 DATA_DIR = "/home/mmlab/idl/HW2P2/hw2p2-data"
 TEST_DIR = osp.join(DATA_DIR, "classification/classification/test")
 
-batch_size = 64
+batch_size = 32
 val_transforms = [ttf.ToTensor()]
 test_dataset = ClassificationTestSet(TEST_DIR, ttf.Compose(val_transforms))
 test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False,

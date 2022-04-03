@@ -16,12 +16,12 @@ from mobilenetV2 import MobileNetV2
 
 
 # MODEL NAME
-model_name = "val_76.117.pth"
+model_name = "val_81.906.pth"
 
 # Hyperparameters
 batch_size = 128
 lr = 0.01
-epochs = 50
+epochs = 150
 best_acc = float(model_name[4:10])
 
 DATA_DIR = "/home/mmlab/idl/HW2P2/hw2p2-data"
