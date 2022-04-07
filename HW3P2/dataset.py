@@ -36,6 +36,7 @@ class LibriSamples(torch.utils.data.Dataset):
 
         X = np.load(self.X_dir + self.X_files[ind]) # TODO: Load the mfcc npy file at the specified index ind in the directory
         Y = np.load(self.Y_dir + self.Y_files[ind]) # TODO: Load the corresponding transcripts
+        X = (X - X.mean(axis=0)) / X.std(axis=0)
         X = torch.FloatTensor(X)
         
         # Remember, the transcripts are a sequence of phonemes. Eg. np.array(['<sos>', 'B', 'IH', 'K', 'SH', 'AA', '<eos>'])
@@ -89,6 +90,7 @@ class LibriSamplesTest(torch.utils.data.Dataset):
     def __getitem__(self, ind):
         # TODOs: Need to return only X because this is the test dataset
         X = np.load(os.path.join(self.data_path, self.X[ind]))
+        X = (X - X.mean(axis=0)) / X.std(axis=0)
         X = torch.FloatTensor(X)
         return X
     
