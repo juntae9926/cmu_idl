@@ -1,0 +1,1 @@
+python inference.py --model "./checkpoint/nodropout/val_9.49.pth"
