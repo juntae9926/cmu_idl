@@ -1,0 +1,10 @@
+torch
+torchsummaryX
+tensorboard
+ctcdecode
+numpy
+pandas
+python-Levenshtein
+scikit-learn
+tensorboard
+tqdm
