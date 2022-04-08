@@ -14,6 +14,7 @@ def test(test_loader, decoder, model_path, device='cuda'):
     model = Network().to(device)
     model.load_state_dict(torch.load(model_path))
     model.eval()
+    torch.cuda.empty_cache()
     batch_bar = tqdm(total=len(test_loader), dynamic_ncols=True, leave=False, position=0, desc='Test')
 
     preds = []
@@ -32,11 +33,9 @@ def test(test_loader, decoder, model_path, device='cuda'):
     for idx, pred in enumerate(preds):
         result.append([idx, pred])
     df = pd.DataFrame(result, columns=['id', 'predictions'])
-    df.to_csv('./submission/submission_{:.02}.csv'.format(model_path.split("/")[-1].split(".")[0]), index=False)
+    df.to_csv('./submission/submission_{}.csv'.format(model_path.split("/")[5:9]), index=False)
 
 if __name__ == "__main__":
-
-
     parser = argparse.ArgumentParser()
     parser.add_argument("--device", default="cuda:0", type=str, help="Select cuda:0 or cuda:1")
     parser.add_argument("--model", default='./checkpoint/bestpoint/val_12.21.pth', type=str, help="Save best model path")
