@@ -70,7 +70,7 @@ class LibriSamplesTest(torch.utils.data.Dataset):
 
     def __init__(self, data_path, test_order): # test_order is the csv similar to what you used in hw1
 
-        test_order_list = pd.read_csv(os.path.join(data_path, 'test',test_order)).file # TODO: open test_order.csv as a list
+        test_order_list = pd.read_csv(os.path.join(data_path, 'test', test_order)).file # TODO: open test_order.csv as a list
         self.X = list(test_order_list) # TODO: Load the npy files from test_order.csv and append into a list
         # You can load the files here or save the paths here and load inside __getitem__ like the previous class
         self.data_path = os.path.join(data_path, 'test/mfcc')
