@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 from torchsummaryX import summary
 from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
 
-import pandas as pd
 from tqdm import tqdm
 import os
 
@@ -15,11 +15,11 @@ warnings.filterwarnings('ignore')
 
 from phonemes import PHONEME_MAP
 from model import Network
-from dataset import LibriSamples, LibriSamplesTest
+from dataset import LibriSamples
 from utils import calculate_levenshtein
 
 
-def validation(model, val_loader, criterion, decoder, device):
+def validation(model, val_loader, criterion, decoder, writer, epoch, device):
     model.eval()
     batch_bar = tqdm(total=len(val_loader), dynamic_ncols=True, leave=False, position=0, desc='Validation')
     
@@ -32,9 +32,11 @@ def validation(model, val_loader, criterion, decoder, device):
             outputs, out_lengths = model(x, len_x)
 
         loss = criterion(outputs, y, out_lengths, len_y)
+        writer.add_scalar("val/epoch", loss, epoch)
         total_loss += float(loss)
 
         distance = calculate_levenshtein(outputs, y, out_lengths, len_y, decoder, PHONEME_MAP=PHONEME_MAP)
+        writer.add_scalar("dis/epoch", distance, epoch)
         total_distance += distance 
 
         batch_bar.set_postfix(loss="{:.04f}".format(loss),dis="{:.04f}".format(distance))
@@ -47,17 +49,17 @@ def validation(model, val_loader, criterion, decoder, device):
 
 
 def main():
-    epochs = 100
+    epochs = args.epochs
     batch_size = args.batch
-    lr = 2e-3
+    lr = args.lr
     root = "./hw3p2_student_data/hw3p2_student_data/"
+    writer = SummaryWriter()
 
     device = args.device if torch.cuda.is_available() else 'cpu'
     print("Device: ", device)
 
     train_data = LibriSamples(root, 'train')
     val_data = LibriSamples(root, 'dev')
-    test_data = LibriSamplesTest(root, 'test_order.csv')
 
     train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True, num_workers=1, collate_fn=LibriSamples.collate_fn) 
     val_loader = DataLoader(val_data, batch_size=batch_size, shuffle=False, num_workers=1, collate_fn=LibriSamples.collate_fn)
@@ -67,14 +69,17 @@ def main():
         print(x.shape, y.shape, lx.shape, ly.shape)
         break
 
-    model = Network().to(device)
+    model = Network()
+    if args.addi == True:
+            model.load_state_dict(torch.load(args.addi_model))
+    model = model.to(device)
     print(model)
 
-    criterion = nn.CTCLoss() # TODO: What loss do you need for sequence to sequence models? 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=lr) # TODO: Adam works well with LSTM (use lr = 2e-3)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=(len(train_loader) * batch_size / 2))
+    criterion = nn.CTCLoss() 
+    optimizer = torch.optim.AdamW(model.parameters(), lr=lr) 
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=(len(train_loader) * epochs))
     #scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, last_epoch=-1)
-    decoder = CTCBeamDecoder(labels=PHONEME_MAP, log_probs_input=True) # TODO: Intialize the CTC beam decoder
+    decoder = CTCBeamDecoder(labels=PHONEME_MAP, log_probs_input=True)
 
     val_dis = 0
     best_dis = 100
@@ -93,6 +98,7 @@ def main():
 
             outputs, out_lengths = model(x, len_x)
             loss = criterion(outputs, y, out_lengths, len_y)
+            writer.add_scalar("train/epoch", loss, epoch)
             
             total_loss += float(loss)
 
@@ -108,24 +114,28 @@ def main():
 
 
         # Validation
-        val_loss, val_dis = validation(model, val_loader, criterion, decoder, device=args.device)
+        _, val_dis = validation(model, val_loader, criterion, decoder, writer, epoch, device=args.device)
+        writer.close()
 
         # Model save
         if val_dis < best_dis:
-            if not os.path.isdir("./checkpoint"):
-                os.mkdir("./checkpoint")
-            torch.save(model.state_dict(), './checkpoint/val_{:.02f}.pth'.format(val_dis))
+            if not os.path.isdir(args.save_model):
+                os.mkdir(args.save_model)
+            torch.save(model.state_dict(), '{}/val_{:.02f}.pth'.format(args.save_model, val_dis))
 
             best_dis = val_dis
-            print("--- best model saved ---")
+            print("--- best model saved at {} ---".format(args.save_model))
         
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--device", default="cuda:0", type=str, help="Select cuda:0 or cuda:1")
-    parser.add_argument("--batch", default=64, type=int, help="Select batch size")
-    parser.add_argument("--best-model", default="./chechpoint", type=str, help="save best model path")
+    parser.add_argument("--batch", default=64, type=int, help="Batch size")
+    parser.add_argument("--save-model", default="./chechpoint", type=str, help="Save best model path")
+    parser.add_argument("--epochs", default=20, type=int, help="Total epochs")
+    parser.add_argument("--lr", default=1e-3, type=float, help="Learning rate")
+    parser.add_argument("--addi", default=False, type=bool, help="additional_training True/False")
+    parser.add_argument("--addi-model", type=str, help="load model to additional training")
 
     args = parser.parse_args()
-    print(args.device)
     main()
