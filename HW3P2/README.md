@@ -17,7 +17,7 @@ I used LSTM for this task.
 
 The training/validation datasets were provided from the instructors.
 
-# How to run the implemendted codes
+# How to run the implemented codes
 
 ## 1. Install Requirements
 
