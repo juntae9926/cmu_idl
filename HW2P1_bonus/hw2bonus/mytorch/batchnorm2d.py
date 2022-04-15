@@ -38,30 +38,53 @@ class BatchNorm2d:
         """
 
         if eval:
-            # TODO
-            raise NotImplemented
+            self.Z = Z
+            NZ = (Z - self.running_M) / np.sqrt(self.running_V + self.eps)
+            self.BZ = self.BW * NZ + self.Bb
+            return self.BZ
+        
+        B, C, W, H = Z.shape
 
         self.Z = Z
-        self.N = None  # TODO
+        self.N = B  # the numebr of batch
+        # self.M = 1/self.N * np.sum(Z, axis=(0, 1)) # TODO
+        # self.V = np.sum(np.square(self.Z - self.M), axis=(0, 1))  # TODO
+        Z_temp = self.Z.transpose(1, 0, 2, 3) # [C, B, W, H]
+        for c in range(C):
+            M_temp = np.sum(Z_temp[c]) / (B*W*H)
+            self.M[0, c, 0, 0] = M_temp
 
-        self.M = None  # TODO
-        self.V = None  # TODO
-        self.NZ = None  # TODO
-        self.BZ = None  # TODO
+        for c in range(C):
+            V_temp = np.sum(np.square(self.Z[:, c, :, :] - self.M[0, c, 0, 0])) / (B*W*H)
+            self.V[0, c, 0, 0] = V_temp
 
-        self.running_M = None  # TODO
-        self.running_V = None  # TODO
+        self.NZ = (self.Z - self.M) / np.sqrt(self.V + self.eps)  # TODO
+        self.BZ = self.BW * self.NZ + self.Bb  # TODO
+
+        self.running_M = self.alpha * self.running_M + (1 - self.alpha) * self.M    # TODO
+        self.running_V = self.alpha * self.running_V + (1 - self.alpha) * self.V  # TODO
 
         return self.BZ
 
     def backward(self, dLdBZ):
-        self.dLdBW = None  # TODO
-        self.dLdBb = None  # TODO
+        # self.dLdBW = np.sum(dLdBZ * self.NZ, axis=(0, 2, 3), keepdims=True)  # TODO
+        # self.dLdBb = np.sum(dLdBZ, axis=(0, 2, 3), keepdims=True)  # TODO
 
-        dLdNZ = None  # TODO
-        dLdV = None  # TODO
-        dLdM = None  # TODO
+        # dLdNZ = dLdBZ * self.BW  # TODO
+        # dLdV = -1/2 * np.sum((dLdNZ * (self.Z - self.M) * ((self.V + self.eps)**(-3/2))), axis=(0, 2, 3), keepdims=True) # TODO
 
-        dLdZ = None  # TODO
+        # dLdM = - np.sum(dLdNZ * (self.V + self.eps)**(-1/2), axis=(0, 2, 3), keepdims=True) \
+        #        + np.sum(dLdNZ * (self.Z - self.M) * (self.V + self.eps) ** (-1.5), axis=(0, 2, 3), keepdims=True) \
+        #        * np.sum((self.Z - self.M), axis=(0, 2, 3), keepdims=True)  # TODO
 
-        raise NotImplemented
+        # dLdZ = dLdNZ * (self.V + self.eps)**(-1/2) + dLdV * (2/self.N * (self.Z - self.M)) + dLdM * (1/(self.N * self.Z.shape[2] * self.Z.shape[3]))   # TODO
+
+        self.dLdBW  = np.sum(dLdBZ * self.NZ, axis=(0, 2, 3), keepdims=True) # TODO
+        self.dLdBb  = np.sum(dLdBZ, axis=(0, 2, 3), keepdims=True) # TODO
+        
+        dLdNZ       = dLdBZ * self.BW # TODO
+        dLdV        = -1/2 * np.sum((dLdNZ * (self.Z - self.M) * ((self.V + self.eps)**(-3/2))), axis=(0, 2, 3), keepdims=True)  # TODO
+        dLdM        = - np.sum(dLdNZ * (self.V + self.eps)**(-1/2), axis=(0, 2, 3), keepdims=True) -2/(self.N*self.Z.shape[2]*self.Z.shape[3]) * dLdV * np.sum((self.Z - self.M), axis=(0, 2, 3), keepdims=True)  # TODO
+        dLdZ        = dLdNZ * (self.V + self.eps)**(-1/2) + dLdV * (2/(self.N*self.Z.shape[2]*self.Z.shape[3]) * (self.Z - self.M)) + dLdM * (1/(self.N*self.Z.shape[2]*self.Z.shape[3])) # TODO
+
+        return dLdZ

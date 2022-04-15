@@ -23,8 +23,22 @@ class Dropout2d(object):
         # 1) Get and apply a per-channel mask generated from np.random.binomial
         # 2) Scale your output accordingly
         # 3) During test time, you should not apply any mask or scaling.
+        B, C, W, H = x.shape
+        if eval == False:
+          mask = []
+          for _ in range(B):
+            temp = []
+            sample = np.random.binomial(1, self.p, C)
+            for i in sample:
+              temp_c = np.ones((W, H)) if i == 0 else np.zeros((W, H))
+              temp.append(temp_c)
+            temp = np.reshape(temp, (C, W, H))
+            mask.append(temp)
 
-        raise NotImplementedError
+          self.mask = np.reshape(mask, (x.shape))
+          x = (x * mask) / (1 - self.p)
+
+        return x
 
     def backward(self, delta):
         """
@@ -36,5 +50,5 @@ class Dropout2d(object):
         # 1) This method is only called during training.
         # 2) You should scale the result by chain rule
 
-        raise NotImplementedError
+        return (delta * self.mask) / (1 - self.p)
 
