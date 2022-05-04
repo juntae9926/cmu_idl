@@ -1,4 +1,5 @@
 from unicodedata import bidirectional
+import math
 import torch
 import numpy as np
 import torch.nn as nn
@@ -107,7 +108,7 @@ class Encoder(nn.Module):
 
 
         x = pack_padded_sequence(x, x_len, batch_first=True, enforce_sorted=False)
-        x = self.lstm(x)[0]
+        x, _ = self.lstm(x)
         x = self.pBLSTMs(x)
         x, lengths = pad_packed_sequence(x, batch_first=True)
 
@@ -167,7 +168,7 @@ class Dot_Attention(nn.Module):
     def __init__(self):
         super(Dot_Attention, self).__init__()
         # Optional: dropout
-        #self.linear = nn.Linear(512, 128)
+        self.linear = nn.Linear(512, 128)
 
     def forward(self, query, key, value, mask):
         """
@@ -182,7 +183,7 @@ class Dot_Attention(nn.Module):
         """
         # return context, attention
         # we return attention weights for plotting (for debugging)
-        #query = self.linear(query)
+        query = self.linear(query)
         query = torch.unsqueeze(query, -1) # [B, L, D]
         energy = torch.bmm(key, query).squeeze(-1)
         energy = torch.masked_fill(energy, mask, -1e9)
@@ -191,6 +192,30 @@ class Dot_Attention(nn.Module):
 
         return context, attention.squeeze(1)
 
+class MultiHeadAttention(nn.Module):
+    def __init__(self, in_features, num_head):
+        super(MultiHeadAttention, self).__init__()
+        self.in_features = in_features
+        self.num_head = num_head
+        # self.linear_q = nn.Linear(512, 128)
+        self.linear_out = nn.Linear(128, in_features)
+
+    def forward(self, q, k, v, mask=None):
+        # q = self.linear_q(q)
+
+        # q: B x dq, k: B x T x dk, v: B x T x dv
+        q = q.unsqueeze(1) # B x 1 x dq
+        scores = torch.bmm(q, k.transpose(-2, -1)) / np.sqrt(q.shape[-1]) #  B x 1 x T
+
+        if mask is not None:
+            mask = mask.unsqueeze(1)
+            scores = torch.masked_fill(scores, mask, -1e9)
+        attention_prob = F.softmax(scores, dim=-1)
+
+        context = torch.bmm(attention_prob, v).squeeze(1)
+        context = self.linear_out(context)
+
+        return context
 
 class Decoder(nn.Module):
     '''
@@ -200,17 +225,23 @@ class Decoder(nn.Module):
     Methods like Gumble noise and teacher forcing can also be incorporated for improving the performance.
     '''
     # key-value-size : attention dimension, en
-    def __init__(self, vocab_size, decoder_hidden_dim, args, embed_dim=256, key_value_size=128):
+    def __init__(self, vocab_size, decoder_hidden_dim, args, embed_dim=256, att_dim=128, key_value_size=128):
         super(Decoder, self).__init__()
+        self.hidden_dim = decoder_hidden_dim
+        self.att_dim = att_dim
         # Hint: Be careful with the padding_idx
         self.embedding = nn.Embedding(vocab_size, embed_dim, padding_idx=0)
+        self.activation = nn.GELU()
+
+        self.attention = MultiHeadAttention(att_dim, num_head=4)    
+
         # The number of cells is defined based on the paper
-        self.lstm1 = nn.LSTMCell(input_size=embed_dim, hidden_size=decoder_hidden_dim)
+        self.lstm1 = nn.LSTMCell(input_size=(embed_dim+att_dim), hidden_size=decoder_hidden_dim)
         self.lstm2 = nn.LSTMCell(input_size=decoder_hidden_dim, hidden_size=key_value_size)
     
-        self.attention = Dot_Attention()     
+
         self.vocab_size = vocab_size
-        # Optional: Weight-tying
+
         self.character_prob = nn.Linear(embed_dim, vocab_size)# fill this out) #: d_v -> vocab_size
         self.key_value_size = key_value_size
         
@@ -218,53 +249,51 @@ class Decoder(nn.Module):
         self.character_prob.weight = self.embedding.weight
         self.args = args
 
-    def _forward_step(self, input, context, hidden_states, key, value, mask):
+    def _forward_step(self, input, output, h2, key, value, mask):
 
-        embed = self.embedding(input)
-        h1, c1 = self.lstm1(embed)
-        #h2, c2 = self.lstm2(h1, hidden_states[1])
-        h2, c2 = self.lstm2(h1)
+        embed = self.embedding(input) # [128, 256]
 
-        if key is not None:
-            context, attention = self.attention(h2, key, value, mask)
-        else:
-            attention = None
+        context = self.attention(h2, key, value, mask) # []
+        attention_output = torch.cat([context, embed], dim=1)
         
-        return context, [h1, h2], attention
+        h1, _ = self.lstm1(attention_output)
+        h2, _ = self.lstm2(h1)
+
+        output = self.character_prob(torch.cat([h2, context], dim=1))
+        output = self.activation(output)
+
+        return output, h2
 
     def forward(self, key, value, encoder_len, y=None, mode='train'):
 
         B, key_seq_max_len, key_value_size = key.shape
         max_len = y.shape[1] if mode == 'train' else 600
 
-        mask = torch.arange(key_seq_max_len).unsqueeze(0) >= torch.as_tensor(encoder_len).unsqueeze(1)
+        mask = torch.arange(key_seq_max_len).unsqueeze(0) >= torch.as_tensor(encoder_len).unsqueeze(1) # B x T
         mask = mask.to(self.args.device)
         
         predictions = torch.zeros((B, self.vocab_size, max_len)).to(self.args.device)
-        prediction = torch.zeros(B, dtype=torch.long).to(device=self.args.device)
 
-        hidden_states = [None, None] 
-        
-        context = torch.zeros(B, key_value_size).to(device=self.args.device)
+        input = torch.ones(B).long().to(self.args.device)
+        output = torch.zeros(B, key_value_size).to(self.args.device)
 
-        attention_plot = [] 
-        attention_plot = torch.zeros(max_len, key_seq_max_len).to(self.args.device)
+        hidden = torch.rand(B, self.att_dim).to(self.args.device)
+
+        cell = [torch.rand(1, self.hidden_dim).to(self.args.device), torch.rand(1, self.hidden_dim).to(self.args.device)]
+        cell = [x.repeat(B, 1) for x in cell]
 
         for i in range(max_len):
             if mode == 'train':
-                if y is not None and i > 0:
-                    input = y[:, i-1]
+
+                output, hidden = self._forward_step(input, output, hidden, key, value, mask)
+
+                # teacher forcing
+                prob = np.random.rand()
+                if y is not None and i > 0 and prob < 0.7:
+                    input = y[:, i-1].long()
                 else:
-                    input = prediction
-                input = input.to(self.args.device)
-                context, hidden_states, attention = self._forward_step(input, context, hidden_states, key, value, mask)
-
-                attention_plot[i, :] = attention[0].detach().cpu()
-
-            output_context = torch.cat([hidden_states[1], context], dim=1)
-            
-            prediction = self.character_prob(output_context)
-            predictions[:, :, i] = prediction
+                    input = output.argmax(-1)
+                predictions[:, :, i] = output
 
         return predictions
 

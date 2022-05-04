@@ -147,7 +147,7 @@ def main():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--device", default="cuda:1", type=str, help="Select cuda:0 or cuda:1")
-    parser.add_argument("--batch-size", default=128, type=int, help="Batch size")
+    parser.add_argument("--batch-size", default=64, type=int, help="Batch size")
     parser.add_argument("--save-model", default="./chechpoint", type=str, help="Save best model path")
     parser.add_argument("--epochs", default=20, type=int, help="Total epochs")
     parser.add_argument("--lr", default=2e-3, type=float, help="Learning rate")
