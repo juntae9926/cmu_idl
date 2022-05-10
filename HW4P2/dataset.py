@@ -2,6 +2,7 @@ import os
 import torch
 import numpy as np
 from torch.nn.utils.rnn import pad_sequence
+import pandas as pd
 from letter_list import LETTER_LIST
 
 class LibriSamples(torch.utils.data.Dataset):
@@ -37,22 +38,31 @@ class LibriSamples(torch.utils.data.Dataset):
         lengths_x = [x.shape[0] for x in batch_x] # TODO: Get original lengths of the sequence before padding
     
         batch_y = [y for x,y in batch]
-        batch_y_pad = pad_sequence(batch_y, batch_first=True) # TODO: pad the sequence with pad_sequence (already imported)
+        batch_y_pad = pad_sequence(batch_y, batch_first=True, padding_value=29) # TODO: pad the sequence with pad_sequence (already imported)
         lengths_y = [y.shape[0] for y in batch_y] # TODO: Get original lengths of the sequence before padding
 
         return batch_x_pad, batch_y_pad, torch.tensor(lengths_x), torch.tensor(lengths_y)
 
-# class LibriSamplesTest(torch.utils.data.Dataset):
+class LibriSamplesTest(torch.utils.data.Dataset):
 
-#     def __init__(self, data_path, test_order):
+    def __init__(self, data_path):  # You can use partition to specify train or dev
 
-#         # TODO
+        self.X_dir = os.path.join(data_path, "test/mfcc/") # TODO: get mfcc directory path
+        self.X_files = np.array(pd.read_csv(os.path.join(data_path, "test/test_order.csv")))
+
+    def __len__(self):
+        return len(self.X_files)
+
+    def __getitem__(self, ind):
+        # x = np.load(os.path.join(self.x_dir, self.x_list[ind]), allow_pickle=True) 
+        X = np.load(os.path.join(self.X_dir, self.X_files[ind].item()), allow_pickle=True)
+        X = torch.Tensor(X)
+
+        return X
+
+    def collate_fn(batch):
+        batch_x = [x for x in batch]
+        batch_x_pad = pad_sequence(batch_x, batch_first=True) # TODO: pad the sequence with pad_sequence (already imported)
+        lengths_x = [x.shape[0] for x in batch_x] # TODO: Get original lengths of the sequence before padding
     
-#     def __len__(self):
-#         # TODO
-    
-#     def __getitem__(self, ind):
-#         # TODO
-    
-#     def collate_fn(batch):
-#         # TODO
+        return batch_x_pad, torch.Tensor(lengths_x) 
